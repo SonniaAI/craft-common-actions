@@ -69,7 +69,11 @@ jobs:
       CARGO_HOME: /var/tmp/craft-cargo
       CARGO_TARGET_DIR: /var/tmp/craft-target
       CARGO_INCREMENTAL: 0
-      CARGO_BUILD_JOBS: 4
+      # Match the guest's vCPUs (2). The aarch64 cross leg sustains this parallelism for over an
+      # hour; at 4 concurrent rustc invocations the hosted runner starved and died mid-job
+      # (SonniaAI/soundcraft run 41231246511 job 124625749356, 2026-10-31: "The hosted runner
+      # lost communication with the server"). Slower is fine: this gate is nightly.
+      CARGO_BUILD_JOBS: ${{ matrix.arch == 'aarch64' && '2' || '4' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check out craft-fonts
@@ -88,6 +92,26 @@ jobs:
             x86_64|aarch64) ;;
             *) echo "::error::unsupported architecture '$ARCH' (use x86_64 or aarch64)"; exit 1 ;;
           esac
+      # The VM image and everything inside it live on the runner's own disk, and a full runner
+      # disk kills the runner agent mid-job with no logs (SonniaAI/soundcraft run 41231246511
+      # job 124625749356, 2026-10-31). The hosted image ships tens of GB of preinstalled
+      # toolchains this workflow never uses (Android SDK, .NET, GHC, Swift, docker images);
+      # remove them before the VM starts and log the result so any future failure leaves
+      # disk evidence in the log.
+      - name: Free runner disk space
+        run: |
+          set -eu
+          echo '::group::Disk before'
+          df -h /
+          echo '::endgroup::'
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/share/swift /opt/hostedtoolcache
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          echo '::group::Disk after'
+          df -h /
+          echo '::endgroup::'
       - name: Start the FreeBSD VM
         uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
         with:
@@ -97,8 +121,13 @@ jobs:
           usesh: true
           # Sized for GitHub-hosted ubuntu-latest (4 vCPU / 16 GiB): a 4-vCPU/12 GiB guest OOMs under nested
           # KVM ("cannot set up guest memory pc.ram: Cannot allocate memory") on 2026-10-27..31 runs.
+          # The x86_64 leg stays at the known-green 7680 MiB (run 41231246511, 42m green); the aarch64
+          # cross leg drops to the vmactions default 6144 MiB: it builds only (tests are not run for
+          # it) and its long sustained compile made the same 7680 MiB footprint part of the hosted
+          # runner starvation on 2026-10-31. A guest that cannot allocate fails cleanly with a log;
+          # a starved runner dies silently.
           cpu: 2
-          mem: 7680
+          mem: ${{ matrix.arch == 'aarch64' && '6144' || '7680' }}
           copyback: false
           envs: "CARGO_HOME CARGO_TARGET_DIR CARGO_INCREMENTAL CARGO_BUILD_JOBS CARGO_BUILD_EXTRA_ARGS CARGO_TEST_EXTRA_ARGS CUSTOM_TEST_COMMAND"
           prepare: |
