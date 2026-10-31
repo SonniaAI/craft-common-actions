@@ -16,16 +16,34 @@ cannot pass. Before creating, editing, deleting or uploading any GitHub release 
 source SHA, workflow run, version, cleanup/restart evidence and artifact hashes. The generated
 `launcher-qualification.json` joins the candidate's release assets/checksums.
 
+`create-draft: false` skips the release job entirely. The qualification workflow's separate
+read-only verification job still checks the native result files, GUI records, updater record,
+summary, and artifact hashes, then uploads `launcher-candidate-evidence`. It has no release action
+or write token. The launcher caller defaults manual dispatch to this mode; an explicit opt-in or
+a release-branch push can create a draft only after qualification. Existing app callers retain
+the previous `create-draft: true` default. No job here publishes a draft.
+
 The companion `launcher-qualification-contract.yml` is a cheap PR gate for the launcher's
 Python evidence-contract tests. The ordinary launcher Rust jobs already compile/test its native
 qualification module, so no extra full PR matrix is added. Full qualification runs only when
 the existing candidate/release workflow is invoked. No scheduled workflow is added.
+
+This repository owns the existing build fan-out and sole draft-release collector; therefore the
+dependency/gate and pre-upload byte comparison belong here. Product-specific fixtures, native
+operations, runner and evidence schema stay in `craft-launcher`. This avoids duplicating the
+release pipeline in the launcher or changing the release behavior of every other application.
 
 Land the shared opt-in interfaces before enabling them in the launcher caller. Keep the launcher
 integration branch separate from its verifier hotfix. Validation of these local changes does not
 mean hosted candidate execution has passed. `tests/test_launcher_qualification.py` checks the
 workflow contract; the launcher README and generated evidence enumerate remaining UI,
 format/architecture, self-update-discovery and disabled-Gatekeeper coverage boundaries.
+
+After both branches and the verifier hotfix are integrated, authorize a manual launcher run on
+the reviewed SHA with `create-draft: false`. Review all seven target results and the combined
+evidence before using an explicit draft-enabled release run. That release run qualifies its own
+bytes; it must not reuse staging evidence for a rebuild. Nothing should be pushed or dispatched
+merely to test the local workflow syntax. Local validation is not hosted execution evidence.
 
 This gates this workflow's draft creation; it does not alter repository protections or prevent
 a maintainer manually publishing a release outside the workflow.

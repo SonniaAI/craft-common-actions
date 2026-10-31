@@ -69,3 +69,36 @@ jobs:
           path: qualification/*
           if-no-files-found: error
           retention-days: 14
+
+  verify:
+    name: Bind qualification evidence to candidate bytes
+    needs: qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: candidate
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: launcher-qualification-*
+          path: qualification
+          merge-multiple: false
+      - name: Validate without release credentials or mutations
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 packaging/e2e/verify_release.py --artifacts candidate --reports qualification \
+            --version "$CANDIDATE_VERSION" --sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: launcher-candidate-evidence
+          path: candidate/launcher-qualification.json
+          if-no-files-found: error
+          retention-days: 14

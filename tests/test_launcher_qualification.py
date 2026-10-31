@@ -24,7 +24,23 @@ class QualificationWorkflowTests(unittest.TestCase):
         job = load(".github/workflows/release.yml")["jobs"]["release"]
         self.assertIn("launcher-qualification", job["needs"])
         self.assertIn("needs.launcher-qualification.result == 'success'", job["if"])
+        self.assertTrue(job["if"].startswith("inputs.create-draft &&"))
         self.assertEqual(job["steps"][0]["with"]["launcher-qualification"], "${{ inputs.launcher-qualification }}")
+
+    def test_qualification_only_still_binds_bytes_without_release_mutation(self):
+        workflow = load(".github/workflows/launcher-qualification.yml")
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        job = workflow["jobs"]["verify"]
+        self.assertEqual(job["needs"], "qualify")
+        self.assertTrue(any("verify_release.py" in step.get("run", "") for step in job["steps"]))
+        for job in workflow["jobs"].values():
+            self.assertNotIn("environment", job)
+            for step in job["steps"]:
+                self.assertNotIn("gh release", step.get("run", ""))
+                self.assertNotIn("draft-release", step.get("uses", ""))
+        # Other app callers retain their existing behavior; the launcher opts out for test runs.
+        release = load(".github/workflows/release.yml")
+        self.assertEqual(release["on"]["workflow_call"]["inputs"]["create-draft"]["default"], "true")
 
     def test_native_architectures_no_rebuilds_no_secrets(self):
         job = load(".github/workflows/launcher-qualification.yml")["jobs"]["qualify"]
