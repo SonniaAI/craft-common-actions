@@ -95,8 +95,10 @@ jobs:
           # Always an x86_64 guest, which KVM accelerates: aarch64 is cross-compiled in it,
           # because an emulated aarch64 guest compiles about 23 times slower (#33).
           usesh: true
-          cpu: 4
-          mem: 12288
+          # Sized for GitHub-hosted ubuntu-latest (4 vCPU / 16 GiB): a 4-vCPU/12 GiB guest OOMs under nested
+          # KVM ("cannot set up guest memory pc.ram: Cannot allocate memory") on 2026-10-27..31 runs.
+          cpu: 2
+          mem: 7680
           copyback: false
           envs: "CARGO_HOME CARGO_TARGET_DIR CARGO_INCREMENTAL CARGO_BUILD_JOBS CARGO_BUILD_EXTRA_ARGS CARGO_TEST_EXTRA_ARGS CUSTOM_TEST_COMMAND"
           prepare: |
